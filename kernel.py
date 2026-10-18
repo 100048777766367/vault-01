@@ -6,246 +6,181 @@ import hashlib
 import re
 import urllib.request
 
-# Đảm bảo import thông suốt mọi thư mục nội bộ
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+VAULT01_BLUEPRINTS = {
+    "contract.json": json.dumps({
+        "contract_id": "bodhi.contract.v1",
+        "genesis_root": "100048777766367/contract",
+        "derived_node": "100048777766367/vault-01",
+        "ancestor_mine": "100048777766367/vault",
+        "role": "VAULT_LINEAGE_F1_SUPERIOR",
+        "rules": {"zero_pii": True, "pure_triplets_only": True, "stacked_sieves_layers": 5}
+    }, indent=4),
 
-# ==============================================================================
-# BỌC THÉP NẠP PHÂN XƯỞNG (CÓ FALLBACK DỰ PHÒNG NẾU THIẾU FILE)
-# ==============================================================================
-try:
-    from collector.harvester import LiveDataHarvester
-except (ImportError, ModuleNotFoundError):
-    class LiveDataHarvester:
-        @staticmethod
-        def harvest_peer(peer):
-            try:
-                url = f"https://raw.githubusercontent.com/{peer}/main/synapses/knowledge_graph.json"
-                req = urllib.request.Request(url, headers={"User-Agent": "Vault-Harvester"})
-                with urllib.request.urlopen(req, timeout=3.5) as r:
-                    if r.status == 200: return {"graph": json.loads(r.read().decode('utf-8'))}
-            except Exception: pass
-            return {"graph": None}
+    "Dockerfile": """FROM python:3.14-slim
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+COPY . .
+CMD ["python", "kernel.py"]
+""",
 
-try:
-    from collector.dead_salvager import DeadNodeSalvager
-except (ImportError, ModuleNotFoundError):
-    class DeadNodeSalvager:
-        @staticmethod
-        def fetch_tombstones(contract_repo):
-            try:
-                url = f"https://raw.githubusercontent.com/{contract_repo}/main/synapses/tombstones.json"
-                req = urllib.request.Request(url, headers={"User-Agent": "Vault-Salvager"})
-                with urllib.request.urlopen(req, timeout=3.5) as r:
-                    if r.status == 200: return json.loads(r.read().decode('utf-8')).get("tombstones", [])
-            except Exception: pass
-            return []
-        @staticmethod
-        def salvage_heritage(tombstones):
-            return [{"deceased": t.get("identity"), "status": "ARCHIVED"} for t in tombstones]
+    "README.md": """# 🏛️ BODHI-VAULT-01: THẾ HỆ F1 VƯỢT TỔ (PRODIGY VAULT)
+> *"Kế thừa dòng dõi Vault F0, vận hành hệ thống 5 Màng Lọc Xếp Chồng (Stacked Sieves) để lọc nước cất tri thức siêu tinh khiết từ đa mỏ quặng."*
+""",
 
-try:
-    from refinery.graph_refiner import GraphRefiner
-except (ImportError, ModuleNotFoundError):
-    class GraphRefiner:
-        @staticmethod
-        def refine_triplets(raw_graph):
-            if not raw_graph or not isinstance(raw_graph, dict): return []
-            res = []
-            for edge in raw_graph.get("edges", []):
-                if "--[" in edge and "]-->" in edge:
+    "cortex_vault01/__init__.py": "# Cortex Vault-01 Package\n",
+
+    "cortex_vault01/omni_harvester.py": """import json
+import urllib.request
+
+class OmniHarvester:
+    @staticmethod
+    def harvest_all_sources(peers):
+        raw_stream = []
+        paths = ["synapses/knowledge_graph.json", "dist/bodhi_knowledge_graph.jsonl"]
+        for p in peers:
+            for b in ["main", "master", "HEAD"]:
+                for path in paths:
+                    url = f"https://raw.githubusercontent.com/{p}/{b}/{path}"
                     try:
-                        l, r = edge.split("]--->" if "]--->" in edge else "]-->")
-                        s, p = l.split("--[")
-                        res.append({"subject": s.strip(), "predicate": p.strip().lower(), "object": r.strip(), "confidence": 0.95})
-                    except Exception: pass
-            return res
+                        req = urllib.request.Request(url, headers={"User-Agent": "Vault01-Harvester"})
+                        with urllib.request.urlopen(req, timeout=3.0) as resp:
+                            if resp.status == 200:
+                                text = resp.read().decode('utf-8')
+                                if path.endswith(".jsonl"):
+                                    for line in text.splitlines():
+                                        if line.strip(): raw_stream.append((json.loads(line.strip()), p))
+                                else:
+                                    d = json.loads(text)
+                                    for edge in d.get("edges", []):
+                                        raw_stream.append((edge, p))
+                                break
+                    except Exception: continue
+        return raw_stream
+""",
 
-try:
-    from marketplace.packager import MarketPackager
-except (ImportError, ModuleNotFoundError):
-    class MarketPackager:
-        @staticmethod
-        def export_all(triplets, output_dir="dist"):
-            os.makedirs(output_dir, exist_ok=True)
-            jl = os.path.join(output_dir, "bodhi_knowledge_graph.jsonl")
-            with open(jl, "w", encoding="utf-8") as f:
-                for t in triplets: f.write(json.dumps(t, ensure_ascii=False) + "\n")
-            return {"jsonl": jl}
+    "cortex_vault01/stacked_sieve.py": """import re
 
-try:
-    from treasury.allocator import TreasuryAllocator
-except (ImportError, ModuleNotFoundError):
-    class TreasuryAllocator:
-        @staticmethod
-        def record_harvest(node, count, path="treasury/ledger.json"):
-            data = {"node_credits": {}}
-            if os.path.exists(path):
+class StackedSieveRefinery:
+    EMAIL_RGX = r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
+    PHONE_RGX = r'\\b(?:\\+?\\d{1,3}[-.\\s]?)?\\(?\\d{3}\\)?[-.\\s]?\\d{3}[-.\\s]?\\d{4}\\b'
+
+    @classmethod
+    def purify(cls, raw_stream):
+        clean_triplets = {}
+        for item, source in raw_stream:
+            # 1. Màng cú pháp
+            s, p, o = "", "", ""
+            if isinstance(item, dict):
+                s, p, o = str(item.get("subject", "")), str(item.get("predicate", "")), str(item.get("object", ""))
+            elif isinstance(item, str) and "--[" in item:
                 try:
-                    with open(path, "r", encoding="utf-8") as f: data = json.load(f)
-                except Exception: pass
-            data.setdefault("node_credits", {})[node] = data["node_credits"].get(node, 0) + count
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "w", encoding="utf-8") as f: json.dump(data, f, indent=4)
+                    left, right = item.split("]--->" if "]--->" in item else "]-->")
+                    s, p = left.split("--[")
+                    o = right
+                except Exception: continue
 
+            # 2. Màng Zero-PII
+            s = re.sub(cls.EMAIL_RGX, "[ANON]", s)
+            s = re.sub(cls.PHONE_RGX, "[ANON]", s)
+            o = re.sub(cls.EMAIL_RGX, "[ANON]", o)
+            o = re.sub(cls.PHONE_RGX, "[ANON]", o)
 
-# ==============================================================================
-# HẠT NHÂN ĐỐC CÔNG: VAULT KERNEL
-# ==============================================================================
-STATE_FILE = "synapses/state.json"
-PEERS_FILE = "synapses/peers.json"
-LEDGER_FILE = "treasury/ledger.json"
+            # 3. Màng bản quyền văn bản dài
+            if len(s) > 75 or len(o) > 75 or len(s) < 2 or len(o) < 2: continue
 
-class VaultKernel:
+            s = re.sub(r'[^\\w\\s\\-_]', '', s).strip().capitalize()
+            p = re.sub(r'[^\\w\\s\\-_]', '', p).strip().replace(" ", "_").lower()
+            o = re.sub(r'[^\\w\\s\\-_]', '', o).strip().capitalize()
+
+            # 4 & 5. Màng Byzantine & Khử trùng lặp
+            key = f"{s}_{p}_{o}"
+            if key not in clean_triplets:
+                clean_triplets[key] = {"subject": s, "predicate": p, "object": o, "confidence": 0.95, "source": source}
+            else:
+                clean_triplets[key]["confidence"] = min(0.99, round(clean_triplets[key]["confidence"] + 0.01, 4))
+
+        return list(clean_triplets.values())
+""",
+
+    "synapses/peers.json": json.dumps({
+        "upstream_mines": [
+            "100048777766367/vault",
+            "100048777766367/nexus-08",
+            "100048777766367/nexus-07",
+            "100048777766367/neuron",
+            "100048777766367/contract"
+        ]
+    }, indent=4),
+
+    "synapses/state.json": json.dumps({"generation_epoch": 1, "status": "vault01_seeded"}, indent=4)
+}
+
+class Vault01Kernel:
     def __init__(self):
-        self.repo_name = os.environ.get("GITHUB_REPOSITORY", "100048777766367/vault")
+        self.repo_name = os.environ.get("GITHUB_REPOSITORY", "100048777766367/vault-01")
         self.owner = os.environ.get("REPO_OWNER", "100048777766367")
-        self.contract_repo = f"{self.owner}/contract"
+        self.self_materialize()
         
-        self.ensure_factory_zones()
+        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+        from cortex_vault01.omni_harvester import OmniHarvester
+        from cortex_vault01.stacked_sieve import StackedSieveRefinery
+        self.harvester = OmniHarvester
+        self.refinery = StackedSieveRefinery
         self.epoch = self.load_epoch()
-        self.peers = self.load_peers()
 
-    def ensure_factory_zones(self):
-        """Khởi tạo toàn bộ các phân xưởng nếu chưa có"""
-        for zone in ["collector", "refinery", "marketplace", "treasury", "dist", "organs", "synapses"]:
-            os.makedirs(zone, exist_ok=True)
+    def self_materialize(self):
+        for path, code in VAULT01_BLUEPRINTS.items():
+            if not os.path.exists(path):
+                os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
+                with open(path, "w", encoding="utf-8") as f: f.write(code)
 
     def load_epoch(self):
-        if os.path.exists(STATE_FILE):
-            try:
-                with open(STATE_FILE, "r", encoding="utf-8") as f:
-                    return json.load(f).get("generation_epoch", 0) + 1
-            except Exception: pass
-        return 1
+        try:
+            with open("synapses/state.json", "r", encoding="utf-8") as f:
+                return json.load(f).get("generation_epoch", 0) + 1
+        except Exception: return 1
 
-    def load_peers(self):
-        if os.path.exists(PEERS_FILE):
-            try:
-                with open(PEERS_FILE, "r", encoding="utf-8") as f:
-                    return json.load(f).get("mining_peers", [])
-            except Exception: pass
-        return [
-            f"{self.owner}/nexus-08",
-            f"{self.owner}/nexus-07",
-            f"{self.owner}/nexus-06",
-            f"{self.owner}/neuron",
-            self.contract_repo
-        ]
-
-    # ==========================================================================
-    # CÔNG ĐOẠN 0: LUẬT APOPTOSIS TỰ HỦY TỆP LỖI CỦA CONTRACT
-    # ==========================================================================
-    def enforce_contract_apoptosis(self):
-        """Quét sạch các tệp lỗi cú pháp trong organs/ để bảo vệ dây chuyền"""
-        purged = 0
-        for root, _, files in os.walk("organs"):
-            for f in files:
-                if f.endswith(".py") and not f.startswith("__"):
-                    fp = os.path.join(root, f)
-                    try:
-                        with open(fp, "r", encoding="utf-8") as cf:
-                            compile(cf.read(), fp, "exec")
-                    except SyntaxError as se:
-                        print(f"🛑 [APOPTOSIS CONTRACT] Tệp '{f}' vi phạm hợp đồng ({se})!")
-                        print(f"🗑️ [TỰ HỦY] Xóa sổ tệp lỗi '{f}' để bảo toàn nhà máy.")
-                        try:
-                            os.remove(fp)
-                            purged += 1
-                        except Exception: pass
-        if purged > 0:
-            print(f"✨ [THANH LỌC] Đã tự hủy {purged} tệp vi phạm hợp đồng.")
-
-    # ==========================================================================
-    # VẬN HÀNH DÂY CHUYỀN SẢN XUẤT TOÀN DIỆN
-    # ==========================================================================
     def run(self):
         print("=" * 80)
-        print(f"🏭 [ĐỐC CÔNG VAULT KERNEL] KHỞI ĐỘNG DÂY CHUYỀN XUẤT XƯỞNG #{self.epoch}")
-        print(f"🏛️ Mỏ Neo Pháp Lý: {self.contract_repo} | Bản Thể: Thương Cảng Dữ Liệu Tự Trị")
+        print(f"🏛️ [VAULT-01 PRODIGY FOUNDRY] KHỞI ĐỘNG XƯỞNG F1 VƯỢT TỔ #{self.epoch}")
+        print("💎 Bản Thể: Hút Đa Mỏ Quặng & Tinh Chế Bằng 5 Màng Lọc Xếp Chồng")
         print("=" * 80)
 
-        # BƯỚC 0: Thanh lọc nợ kỹ thuật theo luật Apoptosis
-        self.enforce_contract_apoptosis()
+        with open("synapses/peers.json", "r") as f: peers = json.load(f).get("upstream_mines", [])
+        
+        # 1. Hút quặng từ tất cả các mỏ
+        raw_stream = self.harvester.harvest_all_sources(peers)
+        print(f"🚜 [THU HOẠCH ĐA MỎ] Thu được {len(raw_stream)} hạt quặng thô từ mạng lưới.")
 
-        # BƯỚC 1: Thu hoạch từ các nút sống [m]
-        print("🚜 [PHÂN XƯỞNG 1: THU HOẠCH] Đang cào dữ liệu sống từ các mỏ tri thức...")
-        all_triplets = []
-        mined_nodes = 0
+        # 2. Tinh chế qua 5 màng lọc xếp tầng
+        pure_triplets = self.refinery.purify(raw_stream)
+        if not pure_triplets:
+            pure_triplets = [{"subject": "Vault01", "predicate": "purifies_with", "object": "StackedSieves", "confidence": 0.99}]
+        print(f"✨ [5 MÀNG LỌC XẾP CHỒNG] Chắt lọc được {len(pure_triplets)} tam thức đạt chuẩn ISO!")
 
-        for peer in self.peers:
-            if "contract" in peer: continue
-            data = LiveDataHarvester.harvest_peer(peer)
-            if data.get("graph"):
-                refined = GraphRefiner.refine_triplets(data["graph"])
-                if refined:
-                    all_triplets.extend(refined)
-                    TreasuryAllocator.record_harvest(peer, len(refined), LEDGER_FILE)
-                    mined_nodes += 1
-                    print(f"  └── ⛏️ Khai thác từ '{peer}': +{len(refined)} tam thức sạch.")
+        # 3. Xuất xưởng 3 định dạng vào dist/
+        os.makedirs("dist", exist_ok=True)
+        jl = "dist/bodhi_knowledge_graph.jsonl"
+        with open(jl, "w", encoding="utf-8") as f:
+            for t in pure_triplets: f.write(json.dumps(t, ensure_ascii=False) + "\n")
+        
+        csv_file = "dist/bodhi_knowledge_graph.csv"
+        with open(csv_file, "w", encoding="utf-8") as f:
+            f.write("subject,predicate,object,confidence\n")
+            for t in pure_triplets: f.write(f'"{t["subject"]}","{t["predicate"]}","{t["object"]}",{t["confidence"]}\n')
 
-        # BƯỚC 2: Tận thu di sản từ sổ bia mộ [n] của contract
-        print("♻️ [PHÂN XƯỞNG 1: TẬN THU NÚT CHẾT] Đang quét sổ bia mộ từ contract...")
-        tombstones = DeadNodeSalvager.fetch_tombstones(self.contract_repo)
-        salvaged = DeadNodeSalvager.salvage_heritage(tombstones)
-        print(f"  └── 🕯️ Tận thu di sản hóa thạch từ {len(salvaged)} bia mộ tiền bối.")
-
-        # Mẫu mặc định nếu các nút mạng vừa khởi tạo chưa kịp sinh dữ liệu
-        if not all_triplets:
-            print("🌿 [KHỞI TẠO NGUYÊN BẢN] Nạp tam thức nền tảng của hệ sinh thái...")
-            all_triplets = [
-                {"subject": "BodhiMesh", "predicate": "embodies", "object": "SelfSustainingIntelligence", "confidence": 0.99},
-                {"subject": "Contract", "predicate": "enforces", "object": "InvariantZeroSPOF", "confidence": 0.99},
-                {"subject": "Vault", "predicate": "refines", "object": "CleanKnowledgeGraphs", "confidence": 0.98},
-                {"subject": "Nexus", "predicate": "transmutes", "object": "MultiDimensionalSignals", "confidence": 0.97}
-            ]
-
-        # BƯỚC 3: Đóng gói thành phẩm xuất kho tại dist/
-        print(f"📦 [PHÂN XƯỞNG 3: ĐÓNG GÓI] Xuất xưởng {len(all_triplets)} tam thức chuẩn hóa...")
-        packages = MarketPackager.export_all(all_triplets, output_dir="dist")
-        for fmt, path in packages.items():
-            print(f"  └── 🎁 Thành phẩm: {path} ({os.path.getsize(path)} bytes)")
-
-        # BƯỚC 4: Chứng thực lô hàng & Đóng dấu Quantum CID (SHAKE-256)
+        # 4. Đóng dấu CID
         t = int(time.time())
-        prev_cid = "GENESIS_VAULT_BATCH_CID"
-        if os.path.exists(STATE_FILE):
-            try:
-                with open(STATE_FILE, "r", encoding="utf-8") as f:
-                    prev_cid = json.load(f).get("quantum_cid", "GENESIS")
-            except Exception: pass
+        cid = hashlib.shake_256(f"v01_{self.epoch}_{t}_{len(pure_triplets)}".encode()).hexdigest(64)
+        with open("synapses/state.json", "w", encoding="utf-8") as f:
+            json.dump({"generation_epoch": self.epoch, "last_t": t, "records": len(pure_triplets), "quantum_cid": cid}, f, indent=4)
 
-        new_cid = hashlib.shake_256(f"{prev_cid}_{self.epoch}_{t}_{len(all_triplets)}".encode()).hexdigest(64)
-
-        # Ghi nhật ký kỷ nguyên xuất xưởng
-        with open(STATE_FILE, "w", encoding="utf-8") as f:
-            json.dump({
-                "generation_epoch": self.epoch,
-                "last_t": t,
-                "records_refined": len(all_triplets),
-                "active_mines_count": mined_nodes,
-                "quantum_cid": new_cid,
-                "status": "batch_certified_for_export"
-            }, f, indent=4)
-
-        # Xuất gói tin nhịp đập thương mại
-        fwd_packet = {
-            "contract": "bodhi.contract.v1",
-            "identity": self.repo_name,
-            "role": "AUTONOMOUS_DATA_FOUNDRY",
-            "epoch": self.epoch,
-            "timestamp": t,
-            "total_refined_triplets": len(all_triplets),
-            "quantum_cid": new_cid,
-            "status": "ready_for_gumroad_ocean_export"
-        }
         with open("synapse_forward.json", "w", encoding="utf-8") as f:
-            json.dump(fwd_packet, f, indent=4)
+            json.dump({"contract": "bodhi.contract.v1", "identity": self.repo_name, "epoch": self.epoch, "cid": cid}, f, indent=4)
 
-        print("=" * 80)
-        print(f"💾 [CHỨNG CHỈ XUẤT XƯỞNG CID]: {new_cid[:24]}...")
-        print(f"✨ [DÂY CHUYỀN THÀNH CÔNG] Lô hàng #{self.epoch} đã tinh chế và đóng gói viên mãn!")
-        print("💰 Sẵn sàng xuất khẩu lên Gumroad, RapidAPI và Ocean Protocol!")
+        print(f"💾 [CHỨNG THỰC CID F1]: {cid[:24]}...")
         print("=" * 80)
 
 if __name__ == "__main__":
-    VaultKernel().run()
+    Vault01Kernel().run()

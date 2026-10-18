@@ -1,0 +1,9 @@
+{
+    "total_revenue_usd": 0.0,
+    "reserve_buffer_usd": 0.0,
+    "node_contributions": {
+        "100048777766367/nexus-08": 219,
+        "100048777766367/nexus-07": 379,
+        "100048777766367/neuron": 50
+    }
+}

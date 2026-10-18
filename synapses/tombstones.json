@@ -1,0 +1,22 @@
+{
+    "tombstones": [
+        {
+            "identity": "100048777766367/neuron",
+            "declared_dead_epoch": 1,
+            "timestamp": 1792236454,
+            "status": "ETERNAL_TOMBSTONE_HERITAGE"
+        },
+        {
+            "identity": "100048777766367/monad",
+            "declared_dead_epoch": 1,
+            "timestamp": 1792236455,
+            "status": "ETERNAL_TOMBSTONE_HERITAGE"
+        },
+        {
+            "identity": "100048777766367/motor",
+            "declared_dead_epoch": 1,
+            "timestamp": 1792236455,
+            "status": "ETERNAL_TOMBSTONE_HERITAGE"
+        }
+    ]
+}

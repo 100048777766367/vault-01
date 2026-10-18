@@ -1,4 +1,4 @@
-name: Vault Industrial Invariant Lifecycle
+name: Vault-01 Lineage Evolution Lifecycle
 
 on:
   push:
@@ -11,31 +11,27 @@ permissions:
   contents: write
 
 jobs:
-  run-vault:
+  run-vault01:
     runs-on: ubuntu-latest
     steps:
-      # 1. KÉO CODE BẰNG LINUX SHELL GỐC
-      - name: Kéo mã nguồn Vault
+      - name: Kéo mã nguồn Vault-01
         run: |
           git clone --depth 1 https://github.com/${{ github.repository }}.git .
 
-      # 2. THIẾT LẬP PYTHON 3.12
-      - name: Thiết lập môi trường Python
+      - name: Thiết lập môi trường Python 3.14
         uses: actions/setup-python@v7
         with:
-          python-version: '3.12'
+          python-version: '3.14'
 
-      # 3. VẬN HÀNH DÂY CHUYỀN TINH CHẾ KERNEL.PY
-      - name: Vận hành Nhà Máy Dữ Liệu
+      - name: Vận hành Đốc Công F1 Tự Phôi Thai
         env:
           REPO_OWNER: ${{ github.repository_owner }}
         run: python kernel.py
 
-      # 4. LƯU THÀNH PHẨM VÀ SỔ CÁI VÀO GIT
-      - name: Lưu vết tích xuất xưởng vào Git
+      - name: Lưu vết toàn bộ thành phẩm F1 lên Git
         run: |
-          git config --global user.name "Vault-Foundry-Bot"
-          git config --global user.email "bot@vault.foundry"
+          git config --global user.name "Vault-01-Prodigy-Bot"
+          git config --global user.email "bot@vault01.node"
           
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
           
@@ -45,14 +41,10 @@ jobs:
           git fetch origin "$TARGET_BRANCH"
           git reset origin/"$TARGET_BRANCH"
           
-          # Stage an toàn tất cả phân xưởng và thành phẩm dist/
-          for d in collector refinery marketplace treasury dist organs synapses; do
-            [ -d "$d" ] && git add -A "$d"
-          done
-          git add contract.json 2>/dev/null || true
+          git add -A
           
           if ! git diff --staged --quiet; then
-            git commit -m "🏛️ [Vault Foundry] Tinh chế & Xuất xưởng lô hàng dữ liệu sạch #(1+N) [skip ci]"
+            git commit -m "🏛️ [Vault-01 F1] Vượt tổ với 5 màng lọc xếp tầng & Xuất xưởng thành phẩm #(1+N) [skip ci]"
             git push origin "$TARGET_BRANCH"
           else
             echo "Kho hàng tĩnh lặng, không có biến thiên mới."

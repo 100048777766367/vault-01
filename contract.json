@@ -1,0 +1,12 @@
+{
+    "contract_id": "bodhi.contract.v1",
+    "genesis_root": "100048777766367/contract",
+    "derived_node": "100048777766367/vault-01",
+    "ancestor_mine": "100048777766367/vault",
+    "role": "VAULT_LINEAGE_F1_SUPERIOR",
+    "rules": {
+        "zero_pii": true,
+        "pure_triplets_only": true,
+        "stacked_sieves_layers": 5
+    }
+}

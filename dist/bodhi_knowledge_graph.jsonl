@@ -1,4 +1,1 @@
-{"subject": "BodhiMesh", "predicate": "embodies", "object": "SelfSustainingIntelligence", "confidence": 0.99}
-{"subject": "Contract", "predicate": "enforces", "object": "InvariantZeroSPOF", "confidence": 0.99}
-{"subject": "Vault", "predicate": "refines", "object": "CleanKnowledgeGraphs", "confidence": 0.98}
-{"subject": "Nexus", "predicate": "transmutes", "object": "MultiDimensionalSignals", "confidence": 0.97}
+{"subject": "Vault01", "predicate": "purifies_with", "object": "StackedSieves", "confidence": 0.99}

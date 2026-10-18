@@ -1,10 +1,6 @@
 {
     "contract": "bodhi.contract.v1",
-    "identity": "100048777766367/vault",
-    "role": "AUTONOMOUS_DATA_FOUNDRY",
-    "epoch": 17,
-    "timestamp": 1792332285,
-    "total_refined_triplets": 4,
-    "quantum_cid": "4fc542cfa532c30e97daa66bbacb78ce5c98595d5cd3c31a5e000890bd713b113213d56dfd109d846c19af7cbc3211899ba18591c419872ce05dabd8e43335cd",
-    "status": "ready_for_gumroad_ocean_export"
+    "identity": "100048777766367/vault-01",
+    "epoch": 22,
+    "cid": "3b106486451a761e5b9ca5e27f19502928177971e018f399bc4033403ad29a38e86ab34613b65d94111efac951514455a17ca15ac9920c4332e23f616848bd19"
 }
